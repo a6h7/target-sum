@@ -1,11 +1,26 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 
-const gridSize = 4;
-const targetSum = 13;
-const maxLives = 5;
+const gridSize: number = 4;
+const generateTargetSum = (): number => Math.floor(Math.random() * 20) + 5;
+let targetSum: number = generateTargetSum();
+const maxLives: number = 5;
 
-const generateGrid = () => {
+interface Cell {
+  row: number;
+  col: number;
+}
+
+type Grid = number[][];
+
+type HTMLElementWithDataset = HTMLElement & {
+  dataset: {
+    row?: string;
+    col?: string;
+  };
+};
+
+const generateGrid = (): Grid => {
   return Array(gridSize)
     .fill(0)
     .map(() =>
@@ -16,35 +31,44 @@ const generateGrid = () => {
 };
 
 export const GameGrid = () => {
-  const [grid, setGrid] = useState(generateGrid);
-  const [selectedCells, setSelectedCells] = useState([]);
-  const [currentSum, setCurrentSum] = useState(0);
-  const [message, setMessage] = useState("");
-  const [isDragging, setIsDragging] = useState(false);
-  const [lives, setLives] = useState(maxLives);
+  const [grid, setGrid] = useState<Grid>(generateGrid);
+  const [selectedCells, setSelectedCells] = useState<Cell[]>([]);
+  const [currentSum, setCurrentSum] = useState<number>(0);
+  const [message, setMessage] = useState<string>("");
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [lives, setLives] = useState<number>(maxLives);
 
   useEffect(() => {
     if (isDragging && currentSum === targetSum) {
       setMessage("Correct! Path adds up to " + targetSum);
       setTimeout(() => {
+        targetSum = generateTargetSum();
         setGrid(generateGrid);
         setSelectedCells([]);
         setCurrentSum(0);
         setMessage("");
-      }, 2000);
+      }, 500);
     }
   }, [currentSum, isDragging]);
 
-  const handleCellMouseDown = (row, col) => {
+  const handleCellTouchStart = (
+    row: number,
+    col: number,
+    event: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>
+  ): void => {
+    event.preventDefault();
     setIsDragging(true);
     setSelectedCells([{ row, col }]);
     setCurrentSum(grid[row][col]);
   };
 
-  const handleCellMouseEnter = (row, col) => {
+  const handleCellMouseEnter = (row: number, col: number): void => {
     if (isDragging && isValidMove(row, col)) {
-      const newSelectedCells = [...selectedCells, { row, col }];
-      const newSum = newSelectedCells.reduce(
+      if (selectedCells.some((cell) => cell.row === row && cell.col === col)) {
+        return; // Prevent adding the same cell multiple times
+      }
+      const newSelectedCells: Cell[] = [...selectedCells, { row, col }];
+      const newSum: number = newSelectedCells.reduce(
         (sum, cell) => sum + grid[cell.row][cell.col],
         0
       );
@@ -53,7 +77,23 @@ export const GameGrid = () => {
     }
   };
 
-  const handleMouseUp = () => {
+  const handleCellTouchMove = (event: React.TouchEvent): void => {
+    event.preventDefault();
+    const touch = event.touches[0];
+    const element = document.elementFromPoint(
+      touch.clientX,
+      touch.clientY
+    ) as HTMLElementWithDataset | null;
+    if (element && element.dataset.row && element.dataset.col) {
+      const row = parseInt(element.dataset.row, 10);
+      const col = parseInt(element.dataset.col, 10);
+      if (isValidMove(row, col)) {
+        handleCellMouseEnter(row, col);
+      }
+    }
+  };
+
+  const handleMouseUp = (): void => {
     if (currentSum !== targetSum) {
       setSelectedCells([]);
       setCurrentSum(0);
@@ -72,16 +112,20 @@ export const GameGrid = () => {
     setIsDragging(false);
   };
 
-  const isValidMove = (row, col) => {
+  const isValidMove = (row: number, col: number): boolean => {
     const lastCell = selectedCells[selectedCells.length - 1];
     if (!lastCell) return true;
     return (
-      Math.abs(lastCell.row - row) <= 1 && Math.abs(lastCell.col - col) <= 1
+      Math.abs(lastCell.row - row) <= 1 && Math.abs(lastCell.col - col) <= 1 // Allow diagonal movement
     );
   };
 
   return (
-    <div className="flex flex-col items-center p-4" onMouseUp={handleMouseUp}>
+    <div
+      className="flex flex-col items-center p-4 touch-none"
+      onMouseUp={handleMouseUp}
+      onTouchEnd={handleMouseUp}
+    >
       <h1 className="text-xl font-bold mb-2">
         Find paths that add up to {targetSum}
       </h1>
@@ -91,6 +135,8 @@ export const GameGrid = () => {
           row.map((value, colIndex) => (
             <motion.div
               key={`${rowIndex}-${colIndex}`}
+              data-row={rowIndex}
+              data-col={colIndex}
               className={`w-16 h-16 flex items-center justify-center border rounded-xl text-lg font-bold cursor-pointer ${
                 selectedCells.some(
                   (cell) => cell.row === rowIndex && cell.col === colIndex
@@ -98,8 +144,14 @@ export const GameGrid = () => {
                   ? "bg-blue-500 text-white"
                   : "bg-gray-200"
               }`}
-              onMouseDown={() => handleCellMouseDown(rowIndex, colIndex)}
+              onMouseDown={(event: React.MouseEvent<HTMLDivElement>) =>
+                handleCellTouchStart(rowIndex, colIndex, event)
+              }
               onMouseEnter={() => handleCellMouseEnter(rowIndex, colIndex)}
+              onTouchStart={(event: React.TouchEvent<HTMLDivElement>) =>
+                handleCellTouchStart(rowIndex, colIndex, event)
+              }
+              onTouchMove={handleCellTouchMove}
             >
               {value}
             </motion.div>
